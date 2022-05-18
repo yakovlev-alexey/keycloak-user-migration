@@ -4,6 +4,10 @@ import com.danielfrak.code.keycloak.providers.rest.exceptions.RestUserProviderEx
 import com.danielfrak.code.keycloak.providers.rest.remote.LegacyUser;
 import com.danielfrak.code.keycloak.providers.rest.rest.http.HttpClient;
 import com.danielfrak.code.keycloak.providers.rest.rest.http.HttpResponse;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.BasicAuthHttpClientStrategy;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.BearerTokenHttpClientStrategy;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.DefaultHttpClientStrategy;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.JwtAuthHttpClientStrategy;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,44 +65,29 @@ class RestUserServiceTest {
     }
 
     @Test
-    void shouldCallEnableApiToken() {
-        var token = "anyToken";
-        enableApiToken(token);
+    void shouldUseDefaultStrategy() throws IOException {
+        var username = "username";
 
-        new RestUserService(model, httpClient, new ObjectMapper());
+        var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
+        when(httpClient.get(any(), any())).thenReturn(getMockedResponse(username));
 
-        verify(httpClient).enableBearerTokenAuth(token);
-    }
+        restUserService.findByUsername(username);
 
-    private void enableApiToken(String token) {
-        config.putSingle(API_TOKEN_ENABLED_PROPERTY, Boolean.TRUE.toString());
-        config.putSingle(API_TOKEN_PROPERTY, token);
+        verify(httpClient).get(any(), argThat(strategy -> strategy instanceof DefaultHttpClientStrategy));
     }
 
     @Test
-    void shouldCallEnableApiJWT() {
-        PrivateKey privateKey = Keys.keyPairFor(SignatureAlgorithm.RS256).getPrivate();
-        enableApiJWT(privateKey);
-
-        new RestUserService(model, httpClient, new ObjectMapper());
-
-        verify(httpClient).enableBearerJWTAuth(privateKey);
-    }
-
-    private void enableApiJWT(PrivateKey privateKey) {
-        config.putSingle(API_JWT_ENABLED_PROPERTY, Boolean.TRUE.toString());
-        config.putSingle(API_JWT_PRIVATE_KEY_PROPERTY, Base64.getEncoder().encodeToString(privateKey.getEncoded()));
-    }
-
-    @Test
-    void shouldCallEnableEnableBasicAuth() {
-        var username = "someUsername";
+    void shouldUseBasicAuthStrategy() throws IOException {
+        var username = "username";
         var password = "anyPassword";
         enableBasicAuth(username, password);
 
-        new RestUserService(model, httpClient, new ObjectMapper());
+        var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
+        when(httpClient.get(any(), any())).thenReturn(getMockedResponse(username));
 
-        verify(httpClient).enableBasicAuth(username, password);
+        restUserService.findByUsername(username);
+
+        verify(httpClient).get(any(), argThat(strategy -> strategy instanceof BasicAuthHttpClientStrategy));
     }
 
     private void enableBasicAuth(String httpBasicAuthUsername, String httpBasicAuthPassword) {
@@ -108,11 +97,55 @@ class RestUserServiceTest {
     }
 
     @Test
+    void shouldUseBearerTokenStrategy() throws IOException {
+        var token = "anyToken";
+        var username = "username";
+        enableApiToken(token);
+
+        var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
+        when(httpClient.get(any(), any())).thenReturn(getMockedResponse(username));
+
+        restUserService.findByUsername(username);
+
+        verify(httpClient).get(any(), argThat(strategy -> strategy instanceof BearerTokenHttpClientStrategy));
+    }
+
+    private void enableApiToken(String token) {
+        config.putSingle(API_TOKEN_ENABLED_PROPERTY, Boolean.TRUE.toString());
+        config.putSingle(API_TOKEN_PROPERTY, token);
+    }
+
+    @Test
+    void shouldUseJwtAuthStrategy() throws IOException {
+        var username = "username";
+        PrivateKey privateKey = Keys.keyPairFor(SignatureAlgorithm.RS256).getPrivate();
+        enableApiJWT(privateKey);
+
+        var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
+        when(httpClient.get(any(), any())).thenReturn(getMockedResponse(username));
+
+        restUserService.findByUsername(username);
+
+        verify(httpClient).get(any(), argThat(strategy -> strategy instanceof JwtAuthHttpClientStrategy));
+    }
+
+    private void enableApiJWT(PrivateKey privateKey) {
+        config.putSingle(API_JWT_ENABLED_PROPERTY, Boolean.TRUE.toString());
+        config.putSingle(API_JWT_PRIVATE_KEY_PROPERTY, Base64.getEncoder().encodeToString(privateKey.getEncoded()));
+    }
+
+    private HttpResponse getMockedResponse(String username) throws IOException {
+        var expectedUser = createALegacyUser(username, "email@example.com");
+        var response = new HttpResponse(HttpStatus.SC_OK, new ObjectMapper().writeValueAsString(expectedUser));
+        return response;
+    }
+
+    @Test
     void findByEmailShouldThrowWhenRuntimeExceptionOccurs() {
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
         var cause = new RuntimeException();
 
-        when(httpClient.get(any()))
+        when(httpClient.get(any(), any()))
                 .thenThrow(cause);
 
         var exception = assertThrows(RestUserProviderException.class,
@@ -125,7 +158,7 @@ class RestUserServiceTest {
     void findByEmailShouldThrowWhenIOExceptionOccurs() {
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(any()))
+        when(httpClient.get(any(), any()))
                 .thenReturn(new HttpResponse(200, "malformedJson"));
 
         var exception = assertThrows(RestUserProviderException.class,
@@ -141,7 +174,7 @@ class RestUserServiceTest {
         var path = String.format(URI_PATH_FORMAT, URI, expectedUser.getEmail());
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByEmail(expectedUser.getEmail());
 
@@ -156,7 +189,7 @@ class RestUserServiceTest {
         var path = String.format(URI_PATH_FORMAT, URI, "EMAIL@EXAMPLE.COM");
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByEmail("EMAIL@EXAMPLE.COM");
 
@@ -186,7 +219,7 @@ class RestUserServiceTest {
         var path = String.format(URI_PATH_FORMAT, URI, expectedUser.getEmail());
         var response = new HttpResponse(HttpStatus.SC_NOT_FOUND);
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByUsername(expectedUser.getEmail());
 
@@ -206,7 +239,7 @@ class RestUserServiceTest {
         var response = new HttpResponse(HttpStatus.SC_OK, objectMapper.writeValueAsString(expectedUser));
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByEmail(requestedEmail);
 
@@ -218,7 +251,7 @@ class RestUserServiceTest {
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
         var cause = new RuntimeException();
 
-        when(httpClient.get(any()))
+        when(httpClient.get(any(), any()))
                 .thenThrow(cause);
 
         var exception = assertThrows(RestUserProviderException.class,
@@ -231,7 +264,7 @@ class RestUserServiceTest {
     void findByUsernameShouldThrowWhenIOExceptionOccurs() {
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(any()))
+        when(httpClient.get(any(), any()))
                 .thenReturn(new HttpResponse(200, "malformedJson"));
 
         var exception = assertThrows(RestUserProviderException.class,
@@ -246,7 +279,7 @@ class RestUserServiceTest {
         var path = String.format(URI_PATH_FORMAT, URI, expectedUser.getUsername());
         var response = new HttpResponse(HttpStatus.SC_OK, objectMapper.writeValueAsString(expectedUser));
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByUsername(expectedUser.getUsername());
 
@@ -260,7 +293,7 @@ class RestUserServiceTest {
         var path = String.format(URI_PATH_FORMAT, URI, "SOMEUSERNAME");
         var response = new HttpResponse(HttpStatus.SC_OK, objectMapper.writeValueAsString(expectedUser));
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByUsername("SOMEUSERNAME");
 
@@ -273,7 +306,7 @@ class RestUserServiceTest {
         var expectedUser = createALegacyUser("someUsername", "email@example.com");
         var path = String.format(URI_PATH_FORMAT, URI, expectedUser.getUsername());
         var response = new HttpResponse(HttpStatus.SC_NOT_FOUND);
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
         var result = restUserService.findByUsername(expectedUser.getUsername());
@@ -288,7 +321,7 @@ class RestUserServiceTest {
         var response = new HttpResponse(HttpStatus.SC_OK, objectMapper.writeValueAsString(expectedUser));
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByUsername("someUsername");
 
@@ -300,7 +333,7 @@ class RestUserServiceTest {
             "someUsername, differentUsername",
             "null, someUsername",
             "someUsername, null"
-    }, nullValues = {"null"})
+    }, nullValues = { "null" })
     void findByUsernameShouldReturnAnEmptyOptionalWhenUsernameDoesNotMatch(
             String requestedUsername, String returnedUsername) throws JsonProcessingException {
         var expectedUser = createALegacyUser(returnedUsername, "email@example.com");
@@ -308,7 +341,7 @@ class RestUserServiceTest {
         var response = new HttpResponse(HttpStatus.SC_OK, objectMapper.writeValueAsString(expectedUser));
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
 
-        when(httpClient.get(path)).thenReturn(response);
+        when(httpClient.get(eq(path), any())).thenReturn(response);
 
         var result = restUserService.findByUsername(requestedUsername);
 
@@ -323,7 +356,7 @@ class RestUserServiceTest {
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
         var response = new HttpResponse(HttpStatus.SC_OK);
         var expectedBody = objectMapper.writeValueAsString(new UserPasswordDto(password));
-        when(httpClient.post(path, expectedBody)).thenReturn(response);
+        when(httpClient.post(eq(path), eq(expectedBody), any())).thenReturn(response);
 
         var isPasswordValid = restUserService.isPasswordValid(username, password);
 
@@ -337,7 +370,7 @@ class RestUserServiceTest {
         var path = String.format(URI_PATH_FORMAT, URI, username);
         var restUserService = new RestUserService(model, httpClient, new ObjectMapper());
         var response = new HttpResponse(HttpStatus.SC_NOT_FOUND);
-        when(httpClient.post(eq(path), anyString())).thenReturn(response);
+        when(httpClient.post(eq(path), anyString(), any())).thenReturn(response);
 
         var isPasswordValid = restUserService.isPasswordValid(username, password);
 

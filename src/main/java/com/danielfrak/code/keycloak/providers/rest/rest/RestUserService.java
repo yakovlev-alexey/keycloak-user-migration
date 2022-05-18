@@ -4,6 +4,12 @@ import com.danielfrak.code.keycloak.providers.rest.remote.LegacyUser;
 import com.danielfrak.code.keycloak.providers.rest.remote.LegacyUserService;
 import com.danielfrak.code.keycloak.providers.rest.exceptions.RestUserProviderException;
 import com.danielfrak.code.keycloak.providers.rest.rest.http.HttpClient;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.BasicAuthHttpClientStrategyBuilder;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.BearerTokenHttpClientStrategyBuilder;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.DefaultHttpClientStrategyBuilder;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.HttpClientStrategy;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.HttpClientStrategyBuilder;
+import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.JwtAuthHttpClientStrategyBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpStatus;
 import org.keycloak.component.ComponentModel;
@@ -24,6 +30,7 @@ public class RestUserService implements LegacyUserService {
 
     private final String uri;
     private final HttpClient httpClient;
+    private final HttpClientStrategyBuilder httpClientStrategyBuilder;
     private final ObjectMapper objectMapper;
 
     public RestUserService(ComponentModel model, HttpClient httpClient, ObjectMapper objectMapper) {
@@ -31,70 +38,7 @@ public class RestUserService implements LegacyUserService {
         this.uri = model.getConfig().getFirst(URI_PROPERTY);
         this.objectMapper = objectMapper;
 
-        configureBasicAuth(model, httpClient);
-        configureBearerTokenAuth(model, httpClient);
-        configureBearerJWTAuth(model, httpClient);
-    }
-
-    private void configureBasicAuth(ComponentModel model, HttpClient httpClient) {
-        var basicAuthConfig = model.getConfig().getFirst(API_HTTP_BASIC_ENABLED_PROPERTY);
-        var basicAuthEnabled = Boolean.parseBoolean(basicAuthConfig);
-        if (basicAuthEnabled) {
-            String basicAuthUser = model.getConfig().getFirst(API_HTTP_BASIC_USERNAME_PROPERTY);
-            String basicAuthPassword = model.getConfig().getFirst(API_HTTP_BASIC_PASSWORD_PROPERTY);
-            httpClient.enableBasicAuth(basicAuthUser, basicAuthPassword);
-        }
-    }
-
-    private void configureBearerTokenAuth(ComponentModel model, HttpClient httpClient) {
-        var tokenAuthEnabled = Boolean.parseBoolean(model.getConfig().getFirst(API_TOKEN_ENABLED_PROPERTY));
-        if (tokenAuthEnabled) {
-            String token = model.getConfig().getFirst(API_TOKEN_PROPERTY);
-            httpClient.enableBearerTokenAuth(token);
-        }
-    }
-
-    private void configureBearerJWTAuth(ComponentModel model, HttpClient httpClient) {
-        boolean jwtAuthEnabled = Boolean.parseBoolean(model.getConfig().getFirst(API_JWT_ENABLED_PROPERTY));
-        if (!jwtAuthEnabled) {
-            return;
-        }
-
-        String privateKey = model.getConfig().getFirst(API_JWT_PRIVATE_KEY_PROPERTY);
-        PrivateKey parsedPrivateKey = getPrivateKey(privateKey);
-
-        if (parsedPrivateKey != null) {
-            httpClient.enableBearerJWTAuth(parsedPrivateKey);
-        }
-    }
-
-    private PrivateKey getPrivateKey(String privateKey) {
-        StringBuilder pkcs8Lines = new StringBuilder();
-
-        BufferedReader rdr = new BufferedReader(new StringReader(privateKey));
-
-        try {
-            String line;
-            while ((line = rdr.readLine()) != null) {
-                pkcs8Lines.append(line);
-            }
-            
-            String pkcs8Pem = pkcs8Lines.toString();
-    
-            pkcs8Pem = pkcs8Pem.replace("-----BEGIN PRIVATE KEY-----", "");
-            pkcs8Pem = pkcs8Pem.replace("-----END PRIVATE KEY-----", "");
-            pkcs8Pem = pkcs8Pem.replaceAll("\\s+", "");
-            
-            byte[] pkcs8EncodedBytes = Base64.getDecoder().decode(pkcs8Pem);
-            
-            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(pkcs8EncodedBytes);
-            KeyFactory kf = KeyFactory.getInstance("RSA");
-
-            return kf.generatePrivate(keySpec);
-        } catch (Exception e) {
-            return null;
-        }   
-
+        this.httpClientStrategyBuilder = createHttpClientStrategyBuilder(model);
     }
 
     @Override
@@ -119,8 +63,9 @@ public class RestUserService implements LegacyUserService {
 
     private Optional<LegacyUser> findLegacyUser(String usernameOrEmail) {
         var getUsernameUri = String.format("%s/%s", this.uri, usernameOrEmail);
+        var strategy = buildHttpClientStrategy(usernameOrEmail);
         try {
-            var response = this.httpClient.get(getUsernameUri);
+            var response = this.httpClient.get(getUsernameUri, strategy);
             if (response.getCode() != HttpStatus.SC_OK) {
                 return Optional.empty();
             }
@@ -135,12 +80,81 @@ public class RestUserService implements LegacyUserService {
     public boolean isPasswordValid(String username, String password) {
         var passwordValidationUri = String.format("%s/%s", this.uri, username);
         var dto = new UserPasswordDto(password);
+        var strategy = buildHttpClientStrategy(username);
         try {
             var json = objectMapper.writeValueAsString(dto);
-            var response = httpClient.post(passwordValidationUri, json);
+            var response = httpClient.post(passwordValidationUri, json, strategy);
             return response.getCode() == HttpStatus.SC_OK;
         } catch (IOException e) {
             throw new RestUserProviderException(e);
+        }
+    }
+
+    private HttpClientStrategy buildHttpClientStrategy(String context) {
+        if (httpClientStrategyBuilder instanceof JwtAuthHttpClientStrategyBuilder) {
+            ((JwtAuthHttpClientStrategyBuilder) httpClientStrategyBuilder).setSubject(context);
+        }
+
+        return httpClientStrategyBuilder.build();
+    }
+
+    private static HttpClientStrategyBuilder createHttpClientStrategyBuilder(ComponentModel model) {
+        var basicAuthConfig = model.getConfig().getFirst(API_HTTP_BASIC_ENABLED_PROPERTY);
+        var basicAuthEnabled = Boolean.parseBoolean(basicAuthConfig);
+
+        if (basicAuthEnabled) {
+            String basicAuthUser = model.getConfig().getFirst(API_HTTP_BASIC_USERNAME_PROPERTY);
+            String basicAuthPassword = model.getConfig().getFirst(API_HTTP_BASIC_PASSWORD_PROPERTY);
+
+            return BasicAuthHttpClientStrategyBuilder.create().setCredentials(basicAuthUser, basicAuthPassword);
+        }
+
+        var tokenAuthEnabled = Boolean.parseBoolean(model.getConfig().getFirst(API_TOKEN_ENABLED_PROPERTY));
+        if (tokenAuthEnabled) {
+            String token = model.getConfig().getFirst(API_TOKEN_PROPERTY);
+
+            return BearerTokenHttpClientStrategyBuilder.create().setToken(token);
+        }
+
+        boolean jwtAuthEnabled = Boolean.parseBoolean(model.getConfig().getFirst(API_JWT_ENABLED_PROPERTY));
+        if (jwtAuthEnabled) {
+
+            String privateKey = model.getConfig().getFirst(API_JWT_PRIVATE_KEY_PROPERTY);
+            PrivateKey parsedPrivateKey = getPrivateKey(privateKey);
+
+            if (parsedPrivateKey != null) {
+                return JwtAuthHttpClientStrategyBuilder.create().setSigningKey(parsedPrivateKey);
+            }
+        }
+
+        return DefaultHttpClientStrategyBuilder.create();
+    }
+
+    private static PrivateKey getPrivateKey(String privateKey) {
+        StringBuilder pkcs8Lines = new StringBuilder();
+
+        BufferedReader rdr = new BufferedReader(new StringReader(privateKey));
+
+        try {
+            String line;
+            while ((line = rdr.readLine()) != null) {
+                pkcs8Lines.append(line);
+            }
+
+            String pkcs8Pem = pkcs8Lines.toString();
+
+            pkcs8Pem = pkcs8Pem.replace("-----BEGIN PRIVATE KEY-----", "");
+            pkcs8Pem = pkcs8Pem.replace("-----END PRIVATE KEY-----", "");
+            pkcs8Pem = pkcs8Pem.replaceAll("\\s+", "");
+
+            byte[] pkcs8EncodedBytes = Base64.getDecoder().decode(pkcs8Pem);
+
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(pkcs8EncodedBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+
+            return kf.generatePrivate(keySpec);
+        } catch (Exception e) {
+            return null;
         }
     }
 }
