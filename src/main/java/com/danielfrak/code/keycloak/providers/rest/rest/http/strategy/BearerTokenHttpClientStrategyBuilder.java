@@ -1,6 +1,6 @@
 package com.danielfrak.code.keycloak.providers.rest.rest.http.strategy;
 
-public class BearerTokenHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
+public final class BearerTokenHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
         private BearerTokenHttpClientStrategy instance = null;
 
         private BearerTokenHttpClientStrategyBuilder() {

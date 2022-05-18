@@ -9,7 +9,7 @@ import org.apache.http.client.methods.HttpUriRequest;
 
 import io.jsonwebtoken.Jwts;
 
-public class JwtAuthHttpClientStrategy implements HttpClientStrategy {
+public final class JwtAuthHttpClientStrategy implements HttpClientStrategy {
         private Key key;
         private String subject;
 
@@ -31,8 +31,8 @@ public class JwtAuthHttpClientStrategy implements HttpClientStrategy {
         }
 
         private String buildJwtString(HttpUriRequest request) {
-                var subject = this.subject == null ? request.getURI().toString() : this.subject;
+                var jwtSubject = subject == null ? request.getURI().toString() : subject;
 
-                return Jwts.builder().setSubject(subject).signWith(key).compact();
+                return Jwts.builder().setSubject(jwtSubject).signWith(key).compact();
         }
 }

@@ -2,7 +2,7 @@ package com.danielfrak.code.keycloak.providers.rest.rest.http.strategy;
 
 import java.security.Key;
 
-public class JwtAuthHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
+public final class JwtAuthHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
         private Key signingKey;
         private String subject;
 

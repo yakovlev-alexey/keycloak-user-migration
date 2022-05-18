@@ -6,7 +6,7 @@ import org.apache.http.HttpHeaders;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.message.BasicHeader;
 
-public class BearerTokenHttpClientStrategy implements HttpClientStrategy {
+public final class BearerTokenHttpClientStrategy implements HttpClientStrategy {
         private BasicHeader authorizationHeader = null;
 
         public BearerTokenHttpClientStrategy(String token) {

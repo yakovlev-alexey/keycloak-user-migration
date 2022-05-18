@@ -1,6 +1,6 @@
 package com.danielfrak.code.keycloak.providers.rest.rest.http.strategy;
 
-public class BasicAuthHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
+public final class BasicAuthHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
         private BasicAuthHttpClientStrategy instance = null;
 
         private BasicAuthHttpClientStrategyBuilder() {

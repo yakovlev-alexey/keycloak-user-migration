@@ -9,7 +9,7 @@ import org.apache.http.HttpHeaders;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.message.BasicHeader;
 
-public class BasicAuthHttpClientStrategy implements HttpClientStrategy {
+public final class BasicAuthHttpClientStrategy implements HttpClientStrategy {
         private BasicHeader authorizationHeader = null;
 
         private static final String USERNAME_PASSWORD_FORMAT = "%s:%s";

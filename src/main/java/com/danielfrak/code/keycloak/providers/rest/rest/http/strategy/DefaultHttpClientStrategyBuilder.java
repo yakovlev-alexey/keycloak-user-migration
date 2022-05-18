@@ -1,6 +1,6 @@
 package com.danielfrak.code.keycloak.providers.rest.rest.http.strategy;
 
-public class DefaultHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
+public final class DefaultHttpClientStrategyBuilder implements HttpClientStrategyBuilder {
         private DefaultHttpClientStrategyBuilder() {
         }
 
