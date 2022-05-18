@@ -10,9 +10,9 @@ import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.message.BasicHeader;
 
 public final class BasicAuthHttpClientStrategy implements HttpClientStrategy {
-        private BasicHeader authorizationHeader = null;
-
         private static final String USERNAME_PASSWORD_FORMAT = "%s:%s";
+
+        private BasicHeader authorizationHeader = null;
 
         public BasicAuthHttpClientStrategy(String user, String password) {
                 if (user == null || user.isBlank() || password == null || password.isBlank()) {
