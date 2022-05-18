@@ -3,6 +3,7 @@ package com.danielfrak.code.keycloak.providers.rest.rest.http;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;
+import org.apache.http.HttpRequest;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -15,9 +16,12 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.util.EntityUtils;
 
+import io.jsonwebtoken.Jwts;
+
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.security.PrivateKey;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,6 +31,8 @@ public class HttpClient {
     private static final String USERNAME_PASSWORD_FORMAT = "%s:%s";
 
     private final HttpClientBuilder httpClientBuilder;
+
+    private PrivateKey jwtPrivateKey = null;
 
     public HttpClient(HttpClientBuilder httpClientBuilder) {
         this.httpClientBuilder = httpClientBuilder;
@@ -52,18 +58,23 @@ public class HttpClient {
         }
     }
 
+    public void enableBearerJWTAuth(PrivateKey privateKey) {
+        if (privateKey != null) {
+            jwtPrivateKey = privateKey;
+        }
+    }
+
     public HttpResponse get(String uri) {
         var request = new HttpGet(uri);
         return execute(request);
     }
 
     private HttpResponse execute(HttpUriRequest request) {
-        request.addHeader(HttpHeaders.ACCEPT, ContentType.APPLICATION_JSON.getMimeType());
+        configureRequest(request);
 
         try (
                 CloseableHttpClient closeableHttpClient = httpClientBuilder.build();
-                CloseableHttpResponse response = closeableHttpClient.execute(request)
-        ) {
+                CloseableHttpResponse response = closeableHttpClient.execute(request)) {
             return getHttpResponse(response);
         } catch (IOException e) {
             throw new HttpRequestException(request, e);
@@ -90,6 +101,15 @@ public class HttpClient {
         return Optional.ofNullable(ContentType.get(entity))
                 .map(ContentType::getCharset)
                 .orElse(StandardCharsets.UTF_8);
+    }
+
+    private void configureRequest(HttpUriRequest request) {
+        request.addHeader(HttpHeaders.ACCEPT, ContentType.APPLICATION_JSON.getMimeType());
+
+        if (jwtPrivateKey != null) {
+            String jwt = Jwts.builder().setSubject(request.getURI().toString()).signWith(jwtPrivateKey).compact();
+            request.addHeader(HttpHeaders.AUTHORIZATION, String.format(BEARER_FORMAT, jwt));
+        }
     }
 
     public HttpResponse post(String uri, String bodyAsJson) {

@@ -9,10 +9,8 @@ import okio.Buffer;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
-import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.LaxRedirectStrategy;
@@ -24,14 +22,19 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.PrivateKey;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.*;
 
 class HttpClientTest {
@@ -191,6 +194,30 @@ class HttpClientTest {
         assertNotNull(authorization);
         assertTrue(authorization.startsWith("Bearer"));
         assertTrue(authorization.endsWith(token));
+    }
+
+    @Test
+    void shouldGetWithBearerJWTAuth() throws InterruptedException {
+        var expectedBody = "anyBody";
+        enqueueSuccessfulResponse(expectedBody);
+        	
+        KeyPair keyPair = Keys.keyPairFor(SignatureAlgorithm.RS256);
+
+        PrivateKey privateKey = keyPair.getPrivate();
+        httpClient.enableBearerJWTAuth(privateKey);
+        HttpResponse response = httpClient.get(uri);
+
+        String jwt = Jwts.builder().setSubject(uri).signWith(privateKey).compact();
+
+        RecordedRequest recordedRequest = Objects.requireNonNull(mockWebServer.takeRequest(5, TimeUnit.SECONDS));
+        assertEquals(expectedBody, response.body);
+        assertEquals(HttpGet.METHOD_NAME, recordedRequest.getMethod());
+        assertEquals("/", recordedRequest.getPath());
+        assertEquals(uri, Objects.requireNonNull(recordedRequest.getRequestUrl()).toString());
+        String authorization = recordedRequest.getHeaders().get(HttpHeaders.AUTHORIZATION);
+        assertNotNull(authorization);
+        assertTrue(authorization.startsWith("Bearer"));
+        assertTrue(authorization.endsWith(jwt));
     }
 
     @Test
@@ -389,5 +416,31 @@ class HttpClientTest {
         assertNotNull(authorization);
         assertTrue(authorization.startsWith("Bearer"));
         assertTrue(authorization.endsWith(token));
+    }
+
+    @Test
+    void postShouldBeSentWithBearerAuthWhenJWTIsEnabled() throws InterruptedException {
+        var expectedBody = "anyBody";
+        enqueueSuccessfulResponse(expectedBody);
+        	
+        KeyPair keyPair = Keys.keyPairFor(SignatureAlgorithm.RS256);
+
+        PrivateKey privateKey = keyPair.getPrivate();
+        httpClient.enableBearerJWTAuth(privateKey);
+
+        HttpResponse response = httpClient.post(uri, expectedBody);
+        
+        String jwt = Jwts.builder().setSubject(uri).signWith(privateKey).compact();
+
+        RecordedRequest recordedRequest = Objects.requireNonNull(
+                mockWebServer.takeRequest(5, TimeUnit.SECONDS));
+        assertEquals(expectedBody, response.body);
+        assertEquals(HttpPost.METHOD_NAME, recordedRequest.getMethod());
+        assertEquals("/", recordedRequest.getPath());
+        assertEquals(uri, Objects.requireNonNull(recordedRequest.getRequestUrl()).toString());
+        String authorization = recordedRequest.getHeaders().get(HttpHeaders.AUTHORIZATION);
+        assertNotNull(authorization);
+        assertTrue(authorization.startsWith("Bearer"));
+        assertTrue(authorization.endsWith(jwt));
     }
 }
