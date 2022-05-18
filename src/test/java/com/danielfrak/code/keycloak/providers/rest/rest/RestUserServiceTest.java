@@ -19,7 +19,12 @@ import org.keycloak.component.ComponentModel;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+
 import java.io.IOException;
+import java.security.PrivateKey;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -68,6 +73,21 @@ class RestUserServiceTest {
     private void enableApiToken(String token) {
         config.putSingle(API_TOKEN_ENABLED_PROPERTY, Boolean.TRUE.toString());
         config.putSingle(API_TOKEN_PROPERTY, token);
+    }
+
+    @Test
+    void shouldCallEnableApiJWT() {
+        PrivateKey privateKey = Keys.keyPairFor(SignatureAlgorithm.RS256).getPrivate();
+        enableApiJWT(privateKey);
+
+        new RestUserService(model, httpClient, new ObjectMapper());
+
+        verify(httpClient).enableBearerJWTAuth(privateKey);
+    }
+
+    private void enableApiJWT(PrivateKey privateKey) {
+        config.putSingle(API_JWT_ENABLED_PROPERTY, Boolean.TRUE.toString());
+        config.putSingle(API_JWT_PRIVATE_KEY_PROPERTY, Base64.getEncoder().encodeToString(privateKey.getEncoded()));
     }
 
     @Test

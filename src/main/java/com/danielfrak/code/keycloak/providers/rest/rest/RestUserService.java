@@ -8,7 +8,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpStatus;
 import org.keycloak.component.ComponentModel;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.StringReader;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -27,6 +33,7 @@ public class RestUserService implements LegacyUserService {
 
         configureBasicAuth(model, httpClient);
         configureBearerTokenAuth(model, httpClient);
+        configureBearerJWTAuth(model, httpClient);
     }
 
     private void configureBasicAuth(ComponentModel model, HttpClient httpClient) {
@@ -47,6 +54,49 @@ public class RestUserService implements LegacyUserService {
         }
     }
 
+    private void configureBearerJWTAuth(ComponentModel model, HttpClient httpClient) {
+        boolean jwtAuthEnabled = Boolean.parseBoolean(model.getConfig().getFirst(API_JWT_ENABLED_PROPERTY));
+        if (!jwtAuthEnabled) {
+            return;
+        }
+
+        String privateKey = model.getConfig().getFirst(API_JWT_PRIVATE_KEY_PROPERTY);
+        PrivateKey parsedPrivateKey = getPrivateKey(privateKey);
+
+        if (parsedPrivateKey != null) {
+            httpClient.enableBearerJWTAuth(parsedPrivateKey);
+        }
+    }
+
+    private PrivateKey getPrivateKey(String privateKey) {
+        StringBuilder pkcs8Lines = new StringBuilder();
+
+        BufferedReader rdr = new BufferedReader(new StringReader(privateKey));
+
+        try {
+            String line;
+            while ((line = rdr.readLine()) != null) {
+                pkcs8Lines.append(line);
+            }
+            
+            String pkcs8Pem = pkcs8Lines.toString();
+    
+            pkcs8Pem = pkcs8Pem.replace("-----BEGIN PRIVATE KEY-----", "");
+            pkcs8Pem = pkcs8Pem.replace("-----END PRIVATE KEY-----", "");
+            pkcs8Pem = pkcs8Pem.replaceAll("\\s+", "");
+            
+            byte[] pkcs8EncodedBytes = Base64.getDecoder().decode(pkcs8Pem);
+            
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(pkcs8EncodedBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+
+            return kf.generatePrivate(keySpec);
+        } catch (Exception e) {
+            return null;
+        }   
+
+    }
+
     @Override
     public Optional<LegacyUser> findByEmail(String email) {
         return findLegacyUser(email)
@@ -54,7 +104,7 @@ public class RestUserService implements LegacyUserService {
     }
 
     private boolean equalsCaseInsensitive(String a, String b) {
-        if(a == null || b == null) {
+        if (a == null || b == null) {
             return false;
         }
 
@@ -76,7 +126,7 @@ public class RestUserService implements LegacyUserService {
             }
             var legacyUser = objectMapper.readValue(response.getBody(), LegacyUser.class);
             return Optional.ofNullable(legacyUser);
-        } catch (RuntimeException|IOException e) {
+        } catch (RuntimeException | IOException e) {
             throw new RestUserProviderException(e);
         }
     }
