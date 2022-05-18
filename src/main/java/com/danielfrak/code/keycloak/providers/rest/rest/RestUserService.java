@@ -12,6 +12,7 @@ import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.HttpClient
 import com.danielfrak.code.keycloak.providers.rest.rest.http.strategy.JwtAuthHttpClientStrategyBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpStatus;
+import org.jboss.logging.Logger;
 import org.keycloak.component.ComponentModel;
 
 import java.io.BufferedReader;
@@ -23,10 +24,14 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import static com.danielfrak.code.keycloak.providers.rest.ConfigurationProperties.*;
 
 public class RestUserService implements LegacyUserService {
+    private static final Pattern SIGNING_KEY_REPLACED_SYMBOLS_PATTERN = Pattern.compile("\\s+",
+            Pattern.UNICODE_CHARACTER_CLASS);
+    private static final Logger LOG = Logger.getLogger(RestUserService.class);
 
     private final String uri;
     private final HttpClient httpClient;
@@ -145,7 +150,7 @@ public class RestUserService implements LegacyUserService {
 
             pkcs8Pem = pkcs8Pem.replace("-----BEGIN PRIVATE KEY-----", "");
             pkcs8Pem = pkcs8Pem.replace("-----END PRIVATE KEY-----", "");
-            pkcs8Pem = pkcs8Pem.replaceAll("\\s+", "");
+            pkcs8Pem = SIGNING_KEY_REPLACED_SYMBOLS_PATTERN.matcher(pkcs8Pem).replaceAll("");
 
             byte[] pkcs8EncodedBytes = Base64.getDecoder().decode(pkcs8Pem);
 
@@ -154,6 +159,7 @@ public class RestUserService implements LegacyUserService {
 
             return kf.generatePrivate(keySpec);
         } catch (Exception e) {
+            LOG.warnf("Unable to parse private key: %s", e);
             return null;
         }
     }
