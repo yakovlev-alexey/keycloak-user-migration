@@ -12,6 +12,8 @@ public final class ConfigurationProperties {
     public static final String URI_PROPERTY = "URI";
     public static final String API_TOKEN_PROPERTY = "API_TOKEN";
     public static final String API_TOKEN_ENABLED_PROPERTY = "API_TOKEN_ENABLED";
+    public static final String API_JWT_PRIVATE_KEY_PROPERTY = "API_PRIVATE_KEY_JWT";
+    public static final String API_JWT_ENABLED_PROPERTY = "API_JWT_ENABLED";
     public static final String API_HTTP_BASIC_ENABLED_PROPERTY = "API_HTTP_BASIC_ENABLED";
     public static final String API_HTTP_BASIC_USERNAME_PROPERTY = "API_HTTP_BASIC_USERNAME";
     public static final String API_HTTP_BASIC_PASSWORD_PROPERTY = "API_HTTP_BASIC_PASSWORD";
@@ -33,6 +35,14 @@ public final class ConfigurationProperties {
             new ProviderConfigProperty(API_TOKEN_PROPERTY,
                     "Rest client Bearer token",
                     "Bearer token",
+                    PASSWORD, null),
+            new ProviderConfigProperty(API_JWT_ENABLED_PROPERTY,
+                    "Rest client Bearer JWT auth enabled",
+                    "Enables Bearer JWT authentication for legacy user service",
+                    BOOLEAN_TYPE, false),
+            new ProviderConfigProperty(API_JWT_PRIVATE_KEY_PROPERTY,
+                    "Rest client private key to sign JWTs with",
+                    "Bearer JWT private key",
                     PASSWORD, null),
             new ProviderConfigProperty(API_HTTP_BASIC_ENABLED_PROPERTY,
                     "Rest client basic auth enabled",
