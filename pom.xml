@@ -17,6 +17,7 @@
 
         <jacoco.version>0.8.8</jacoco.version>
         <jackson.version>2.13.2</jackson.version>
+        <jjwt.version>0.11.5</jjwt.version>
     </properties>
 
     <dependencyManagement>
@@ -112,29 +113,29 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
             <version>${jackson.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>0.11.5</version>
+            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
-            <version>0.11.5</version>
-            <scope>runtime</scope>
+            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
-            <version>0.11.5</version>
-            <scope>runtime</scope>
+            <version>${jjwt.version}</version>
         </dependency>
     </dependencies>
 
@@ -144,7 +145,40 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.2</version>
             </plugin>
+
+            <plugin>
+                <!-- NoClassDefFoundError is thrown when io.jsonwebtoken is not bundled in -->
+                <!-- The solution to add classpaths to the jar did not work -->
+                <!-- https://stackoverflow.com/questions/57778240/noclassdeffounderror-in-a-provider-jar-when-using-a-class-from-org-keycloak-auth -->
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <descriptors>${basedir}/assembly.xml</descriptors>
+                </configuration>
+            </plugin>
+
+
+
+            <!-- <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Dependencies><![CDATA[io.jsonwebtoken.jjwt-api,io.jsonwebtoken.jjwt-impl,io.jsonwebtoken.jjwt-jackson]]></Dependencies>
+</manifestEntries>
+</archive>
+</configuration>
+</plugin> -->
         </plugins>
+
     </build>
 
     <profiles>
@@ -202,3 +236,5 @@
         </profile>
     </profiles>
 </project>
+
+
